@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  # 1. RabbitMQ (The Broker)
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: telemetry-rabbit
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    networks:
+      - telemetry-net
+
+  # 2. SQL Server (The Database)
+  sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: telemetry-db
+    ports:
+      - "1433:1433"
+    environment:
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStrong!Passw0rd
+    volumes:
+      - sql_data:/var/opt/mssql
+    networks:
+      - telemetry-net
+
+  # 3. Satellite Sensor (Producer)
+  sensor:
+    build: 
+      context: ./SatelliteSensor # Build the code in this folder
+    container_name: telemetry-sensor
+    depends_on:
+      - rabbitmq # Wait for RabbitMQ to start
+    environment:
+      - RabbitMQHost=rabbitmq # Tell C# to look for a machine named "rabbitmq"
+    networks:
+      - telemetry-net
+
+  # 4. Satellite Receiver (Consumer)
+  receiver:
+    build: 
+      context: ./SatelliteReceiver # Build the code in this folder
+    container_name: telemetry-receiver
+    depends_on:
+      - rabbitmq
+      - sqlserver
+    environment:
+      - RabbitMQHost=rabbitmq
+      - SQLHost=sqlserver
+    networks:
+      - telemetry-net
+
+volumes:
+  rabbitmq_data:
+  sql_data:
+
+networks:
+  telemetry-net:
